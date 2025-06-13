@@ -7,49 +7,57 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     permissions:
-      id-token: write  # Required for OIDC
-      contents: read
+      id-token: write  # Required for OIDC authentication
+      contents: read    # Required to checkout code
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Use OIDC for AWS authentication (RECOMMENDED)
+      # Configure AWS credentials using OIDC (recommended)
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
           aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: GitHubActions-${{ github.run_id }}
 
-      # Use latest ECR login action
-      - name: Login to AWS ECR
-        id: login-ecr
+      # Login to ECR
+      - name: Login to Amazon ECR
+        id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build, Tag, Push Docker Image
+      # Build and push Docker image
+      - name: Build, Tag, and Push Docker Image
         env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f path/to/Dockerfile .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f Dockerfile .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
 
-      # Reference task definition from file (not secret)
+      # Update ECS task definition
       - name: Render Task Definition
-        id: task-def
+        id: render-task-def
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: .github/ecs-task-definition.json  # Path to your task def file
-          container-name: ${{ secrets.ECS_CONTAINER_NAME }}   # From secrets
-          image: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:${{ github.sha }}
+          task-definition: task-definition.json  # Path to your task definition file
+          container-name: ${{ secrets.ECS_CONTAINER_NAME }}
+          image: ${{ steps.ecr-login.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:${{ github.sha }}
 
-      - name: Deploy to ECS
+      # Deploy to ECS
+      - name: Deploy to ECS Service
         uses: aws-actions/amazon-ecs-deploy-task-definition@v1
         with:
           cluster: ${{ secrets.ECS_CLUSTER }}
           service: ${{ secrets.ECS_SERVICE }}
-          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
           wait-for-service-stability: true
+
+      # Optional cleanup step
+      - name: Cleanup Docker Resources
+        run: |
+          docker system prune -af
+          docker volume prune -f
