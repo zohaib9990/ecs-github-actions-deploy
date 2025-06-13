@@ -9,37 +9,39 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    env:  # ✅ Ensures region is passed to all steps
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+    env:
+      AWS_ACCESS_KEY_ID: "AKIAYHJANMMIDYURLUVL"
+      AWS_SECRET_ACCESS_KEY: "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"
+      AWS_REGION: us-east-1  # Or whatever region you're using
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Login to AWS ECR
-      id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v1
+      - name: Login to AWS ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
 
-    - name: Build, Tag, and Push Docker Image
-      env:
-        ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        docker build -t $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_NAME }}:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/${{ secrets.ECR_REPOSITORY_NAME }}:$IMAGE_TAG
+      - name: Build, Tag, and Push Docker Image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/your-ecr-repo:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/your-ecr-repo:$IMAGE_TAG
 
-    - name: Render Task Definition
-      id: task-def
-      uses: aws-actions/amazon-ecs-render-task-definition@v1
-      with:
-        task-definition: task-definition.json
-        container-name: my-container
-        image: ${{ steps.login-ecr.outputs.registry }}/${{ secrets.ECR_REPOSITORY_NAME }}:${{ github.sha }}
+      - name: Render Task Definition
+        id: task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: my-container
+          image: ${{ steps.login-ecr.outputs.registry }}/your-ecr-repo:${{ github.sha }}
 
-    - name: Deploy to ECS
-      uses: aws-actions/amazon-ecs-deploy-task-definition@v1
-      with:
-        cluster: ${{ secrets.ECS_CLUSTER }}
-        service: ${{ secrets.ECS_SERVICE }}
-        task-definition: ${{ steps.task-def.outputs.task-definition }}
-        wait-for-service-stability: true
+      - name: Deploy to ECS
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v1
+        with:
+          cluster: your-cluster-name
+          service: your-service-name
+          task-definition: ${{ steps.task-def.outputs.task-definition }}
+          wait-for-service-stability: true
