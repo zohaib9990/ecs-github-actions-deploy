@@ -9,6 +9,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:  # ✅ Ensures region is passed to all steps
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
